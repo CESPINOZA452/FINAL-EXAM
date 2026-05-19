@@ -96,7 +96,8 @@ def delete_student(id):
     if not estudiante:
         return jsonify({"error": f"Estudiante con ID {id} no encontrado"}), 404
     
-    students_db = [s for s in students_db if s['id'] != id]
+    # Modificamos la lista original para que main.py vea los cambios
+    students_db[:] = [s for s in students_db if s['id'] != id]
     return jsonify({"message": f"Estudiante con ID {id} eliminado correctamente"}), 200
 
 

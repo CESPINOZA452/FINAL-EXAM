@@ -1,5 +1,4 @@
 from flask import Flask, render_template
-# Importamos también la lista students_db para poder mostrarla en la tabla
 from routes.estudiantes import estudiantes_bp, students_db
 
 app = Flask(__name__)
@@ -15,7 +14,7 @@ def home():
 # Ruta para visualizar la tabla
 @app.route('/view/students')
 def view_students():
-    return render_template('tabla.html', estudiantes=students_db)
+    return render_template('partials/tabla.html', estudiantes=students_db)
 
 # Ejecución del aplicativo
 if __name__ == '__main__':

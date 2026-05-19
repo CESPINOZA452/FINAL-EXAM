@@ -3,13 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <title>API REST de Estudiantes</title>
+    <!-- Importación de HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 </head>
 <body>
     <h1>Panel de Control de Estudiantes</h1>
     <nav>
         <ul>
-            <li><a href="/view/students">Ver Tabla de Alumnos</a></li>
+            <li>
+                <!-- HTMX: Carga la ruta en el div #contenido sin recargar -->
+                <button hx-get="/view/students" hx-target="#contenido">
+                    Ver Tabla de Alumnos
+                </button>
+            </li>
+            <li><a href="/students" target="_blank">Ver JSON (API)</a></li>
         </ul>
     </nav>
+
+    <div id="contenido" style="margin-top: 20px;">
+        <p>El contenido se cargará aquí debajo.</p>
+    </div>
 </body>
 </html>

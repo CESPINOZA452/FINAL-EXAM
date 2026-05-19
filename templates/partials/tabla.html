@@ -1,0 +1,26 @@
+<!-- Fragmento de tabla para HTMX -->
+<h3>Lista Actualizada</h3>
+<table border="1">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nombre del Estudiante</th>
+                <th>Calificación (Nota)</th>
+                <th>Fecha de Registro</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in estudiantes %}
+            <tr>
+                <td>{{ s.id }}</td>
+                <td>{{ s.name }}</td>
+                <td>{{ s.grade }}</td>
+                <td>{{ s.created_at[:10] }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4">No hay estudiantes registrados actualmente.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+</table>
