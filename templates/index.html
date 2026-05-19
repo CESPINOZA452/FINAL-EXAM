@@ -2,26 +2,290 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>API REST de Estudiantes</title>
-    <!-- Importación de HTMX -->
-    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            margin: 10px;
+            background: #f1f1f1;
+            color: #000000;
+        }
+        
+        h1 { 
+            text-align: center; 
+            color: #000000;
+            font-size: 30px;       /* ✅ MÁS PEQUEÑO */
+            margin-bottom: 10px;   /* ✅ MENOS ESPACIO */
+        }
+        
+        h2 {
+            font-size: 15px;
+            margin-top: 1px;
+            margin-bottom: 1px; /* ✅ reduce espacio vertical */
+        }
+        
+        /* Contenedor principal en Grid */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        section {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 16px;
+            height: fit-content;
+        }
+        label {
+            display: block;
+            margin: 8px 0 4px;
+            font-weight: 600;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 6px 10px;
+            margin: 2px 2px 0 0;
+            font-size: 10px;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button.secondary {
+            background: #757575;
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        .form-group-inline {
+            display: flex; gap: 10px; align-items: flex-end;
+        }
+        pre {
+            background: #222;
+            color: #eee;
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+    </style>
 </head>
 <body>
-    <h1>Panel de Control de Estudiantes</h1>
-    <nav>
-        <ul>
-            <li>
-                <!-- HTMX: Carga la ruta en el div #contenido sin recargar -->
-                <button hx-get="/view/students" hx-target="#contenido">
-                    Ver Tabla de Alumnos
-                </button>
-            </li>
-            <li><a href="/students" target="_blank">Ver JSON (API)</a></li>
-        </ul>
-    </nav>
+    <h1>Gestión de Estudiantes</h1>
 
-    <div id="contenido" style="margin-top: 20px;">
-        <p>El contenido se cargará aquí debajo.</p>
+    <div class="dashboard">
+        <!-- Columna Izquierda: Consultas y Acciones Rápidas -->
+        <div class="column">
+            <section>
+                <h2>Consultas Rápidas</h2>
+                <button id="btn-list">Listar JSON</button>
+                <button class="secondary" id="btn-view-table">Ver Tabla HTML</button>
+                <button id="btn-average">Calcular Promedio</button>
+            </section>
+
+            <section>
+                <h2>Búsqueda y Eliminación</h2>
+                <div class="form-group-inline">
+                    <div style="flex:1">
+                        <label for="student-id">ID Estudiante</label>
+                        <input id="student-id" type="number" placeholder="ID" min="1">
+                    </div>
+                    <button id="btn-get">Buscar</button>
+                    <button id="btn-delete" style="background:#dc3545">Eliminar</button>
+                </div>
+            </section>
+
+            <section>
+                <h2>Inserción en Bloque</h2>
+                <textarea id="bulk-json" rows="5" placeholder='[{"name":"Ana","dni":"123","age":20,"grade":15}]'></textarea>
+                <button id="btn-bulk" class="full-width">Procesar JSON</button>
+            </section>
+        </div>
+
+        <!-- Columna Derecha: Formularios de Datos -->
+        <div class="column">
+            <section>
+                <h2>Crear / Actualizar</h2>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label for="update-id">ID (solo para Update)</label>
+                        <input id="update-id" type="number" placeholder="ID a modificar">
+                    </div>
+                    <div>
+                        <label for="create-dni">DNI</label>
+                        <input id="create-dni" type="text" placeholder="DNI">
+                    </div>
+                </div>
+                
+                <label for="create-name">Nombre Completo</label>
+                <input id="create-name" type="text" placeholder="Nombre">
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label for="create-age">Edad</label>
+                        <input id="create-age" type="number" placeholder="Edad">
+                    </div>
+                    <div>
+                        <label for="create-grade">Nota</label>
+                        <input id="create-grade" type="number" step="0.1" placeholder="0-20">
+                    </div>
+                    <div style="display:flex; align-items:center; padding-top:25px;">
+                        <label style="margin:0">
+                            <input id="create-approved" type="checkbox"> Aprobado
+                        </label>
+                    </div>
+                </div>
+
+                <div style="margin-top:15px; display:flex; gap:10px;">
+                    <button id="btn-create" style="flex:1">Crear Nuevo</button>
+                    <button id="btn-update" class="secondary" style="flex:1">Actualizar por ID</button>
+                </div>
+            </section>
+            
+            <section>
+                <h2>Resultado de API</h2>
+                <pre id="output">Esperando acción...</pre>
+            </section>
+        </div>
     </div>
+
+    <script>
+        const output = document.getElementById('output');
+
+        async function callApi(path, method = 'GET', body = null) {
+            try {
+                const options = { method, headers: {} };
+                if (body !== null) {
+                    options.headers['Content-Type'] = 'application/json';
+                    options.body = JSON.stringify(body);
+                }
+
+                const response = await fetch(path, options);
+                const responseText = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (error) {
+                    data = responseText;
+                }
+
+                output.textContent = `HTTP ${response.status} ${response.statusText}\n\n${typeof data === 'string' ? data : JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                output.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        function getValue(id) {
+            return document.getElementById(id).value.trim();
+        }
+
+        document.getElementById('btn-list').addEventListener('click', () => {
+            callApi('/students', 'GET');
+        });
+
+        document.getElementById('btn-view-table').addEventListener('click', () => {
+            window.location.href = '/view/students';
+        });
+
+        document.getElementById('btn-get').addEventListener('click', () => {
+            const id = getValue('student-id');
+            if (!id) {
+                output.textContent = 'Debe ingresar un ID válido.';
+                return;
+            }
+            callApi(`/students/${id}`, 'GET');
+        });
+
+        document.getElementById('btn-create').addEventListener('click', () => {
+            const name = getValue('create-name');
+            const dni = getValue('create-dni');
+            const age = getValue('create-age');
+            const grade = getValue('create-grade');
+            const isApproved = document.getElementById('create-approved').checked;
+
+            if (!name || !dni || !age || !grade) {
+                output.textContent = 'Ingrese nombre, dni, edad y nota para crear el estudiante.';
+                return;
+            }
+
+            callApi('/students', 'POST', {
+                name,
+                dni,
+                age: Number(age),
+                grade: Number(grade),
+                is_approved: isApproved
+            });
+        });
+
+        document.getElementById('btn-update').addEventListener('click', () => {
+            const id = getValue('update-id');
+            if (!id) {
+                output.textContent = 'Debe ingresar el ID del estudiante a actualizar.';
+                return;
+            }
+
+            const body = {};
+            const name = getValue('update-name');
+            const dni = getValue('update-dni');
+            const age = getValue('update-age');
+            const grade = getValue('update-grade');
+            const isApproved = document.getElementById('update-approved').checked;
+
+            if (name) body.name = name;
+            if (dni) body.dni = dni;
+            if (age) body.age = Number(age);
+            if (grade) body.grade = Number(grade);
+            body.is_approved = isApproved;
+
+            if (Object.keys(body).length === 0) {
+                output.textContent = 'Ingrese al menos un campo para actualizar.';
+                return;
+            }
+
+            callApi(`/students/${id}`, 'PUT', body);
+        });
+
+        document.getElementById('btn-delete').addEventListener('click', () => {
+            const id = getValue('delete-id');
+            if (!id) {
+                output.textContent = 'Debe ingresar el ID del estudiante a eliminar.';
+                return;
+            }
+            callApi(`/students/${id}`, 'DELETE');
+        });
+
+        document.getElementById('btn-bulk').addEventListener('click', () => {
+            const raw = document.getElementById('bulk-json').value.trim();
+            if (!raw) {
+                output.textContent = 'Ingrese JSON válido para la carga masiva.';
+                return;
+            }
+            try {
+                const data = JSON.parse(raw);
+                callApi('/students/bulk', 'POST', data);
+            } catch (error) {
+                output.textContent = `JSON inválido: ${error.message}`;
+            }
+        });
+
+        document.getElementById('btn-average').addEventListener('click', () => {
+            callApi('/students/average', 'GET');
+        });
+    </script>
 </body>
 </html>

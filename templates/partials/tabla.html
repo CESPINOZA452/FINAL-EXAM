@@ -4,22 +4,30 @@
         <thead>
             <tr>
                 <th>ID</th>
+                <th>DNI</th>
                 <th>Nombre del Estudiante</th>
+                <th>Edad</th>
                 <th>Calificación (Nota)</th>
+                <th>¿Aprobado?</th>
                 <th>Fecha de Registro</th>
+                <th>Última Actualización</th>
             </tr>
         </thead>
         <tbody>
             {% for s in estudiantes %}
             <tr>
                 <td>{{ s.id }}</td>
+                <td>{{ s.dni }}</td>
                 <td>{{ s.name }}</td>
+                <td>{{ s.age }}</td>
                 <td>{{ s.grade }}</td>
+                <td>{{ "SI" if s.is_approved else "NO" }}</td>
                 <td>{{ s.created_at[:10] }}</td>
+                <td>{{ s.updated_at[:19].replace('T', ' ') }}</td>
             </tr>
             {% else %}
             <tr>
-                <td colspan="4">No hay estudiantes registrados actualmente.</td>
+                <td colspan="8">No hay estudiantes registrados actualmente.</td>
             </tr>
             {% endfor %}
         </tbody>
