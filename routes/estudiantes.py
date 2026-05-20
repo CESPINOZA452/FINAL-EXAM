@@ -1,36 +1,29 @@
 from flask import Blueprint, jsonify, request, render_template
 from datetime import datetime
+from pymongo import MongoClient, errors
 
 # Creamos un Blueprint para agrupar las rutas de estudiantes
 estudiantes_bp = Blueprint('students', __name__)
 
-# Base de datos simulada en memoria (Lista de diccionarios)
-# Cada estudiante tendrá: id, nombre, nota y fechas de auditoría
-students_db = [
-    {
-        "id": 1, 
-        "name": "Juan Perez", 
-        "dni": "12345678",
-        "age": 20,
-        "is_approved": True,
-        "grade": 15.5,
-        "created_at": datetime.now().isoformat(), 
-        "updated_at": datetime.now().isoformat()
-    },
-    {
-        "id": 2, 
-        "name": "Maria Lopez", 
-        "dni": "87654321",
-        "age": 22,
-        "is_approved": True,
-        "grade": 18.0,
-        "created_at": datetime.now().isoformat(), 
-        "updated_at": datetime.now().isoformat()
-    }
-]
+# Configuración de MongoDB
+try:
+    # Añadimos un timeout de 2 segundos para detectar errores rápido
+    client = MongoClient('mongodb://localhost:27017/', serverSelectionTimeoutMS=2000)
+    db = client['cibertec_db']
+    students_col = db['students']
+    # Forzamos una llamada para verificar la conexión al inicio
+    client.admin.command('ping')
+except errors.ServerSelectionTimeoutError:
+    print("❌ ERROR: No se pudo conectar a MongoDB. Verifica que el servicio esté activo.")
+    students_col = None
 
-# Contador para autoincrementar el ID de nuevos estudiantes
-current_id = 2
+def get_next_id():
+    """Helper para simular autoincremento en MongoDB"""
+    last_student = students_col.find_one(sort=[("id", -1)])
+    if last_student:
+        return last_student['id'] + 1
+    return 1
+
 
 # Helper function to get data from either JSON or form
 def get_request_data():
@@ -42,7 +35,9 @@ def get_request_data():
 # 1. CREAR UN ESTUDIANTE (POST /students)
 @estudiantes_bp.route('/students', methods=['POST'])
 def create_student():
-    global current_id
+    if students_col is None:
+        return jsonify({"error": "Base de datos no disponible"}), 500
+        
     data = get_request_data()
     
     # Validación de campos obligatorios
@@ -50,118 +45,140 @@ def create_student():
     if not data or not all(field in data for field in required_fields):
         return jsonify({"error": f"Datos incompletos. Se requiere: {', '.join(required_fields)}"}), 400
 
-    # Validación de DNI único
-    if any(s['dni'] == str(data['dni']) for s in students_db):
-        return jsonify({"error": "El DNI ya se encuentra registrado"}), 400
+    try:
+        # Validación de DNI único
+        if students_col.find_one({"dni": str(data['dni'])}):
+            return jsonify({"error": "El DNI ya se encuentra registrado"}), 400
+        
+        nuevo_estudiante = {
+            "id": get_next_id(),
+            "name": data['name'],
+            "dni": str(data['dni']),
+            "age": int(data['age']),
+            "is_approved": str(data.get('is_approved')).lower() in ['true', '1', 'on', 'yes'],
+            "grade": float(data['grade']),
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+    except ValueError:
+        return jsonify({"error": "La edad y la nota deben ser valores numéricos válidos"}), 400
     
-    current_id += 1
-    nuevo_estudiante = {
-        "id": current_id,
-        "name": data['name'],
-        "dni": str(data['dni']),
-        "age": int(data['age']),
-        "is_approved": bool(data.get('is_approved')),
-        "grade": float(data['grade']),
-        "created_at": datetime.now().isoformat(),
-        "updated_at": datetime.now().isoformat()
-    }
-    
-    students_db.append(nuevo_estudiante)
+    students_col.insert_one(nuevo_estudiante)
+    # Limpiamos el _id de Mongo para la respuesta JSON
+    nuevo_estudiante.pop('_id', None)
     return jsonify(nuevo_estudiante), 201
-    # Si la petición viene de HTMX, podríamos devolver la tabla actualizada directamente
-    # if request.headers.get('HX-Request') == 'true':
-    #     return render_template('partials/tabla.html', estudiantes=students_db)
-    # else:
-    #     return jsonify(nuevo_estudiante), 201
+
 
 # 2. OBTENER TODOS LOS ESTUDIANTES (GET /students)
 @estudiantes_bp.route('/students', methods=['GET'])
 def get_all_students():
-    return jsonify(students_db), 200
+    if students_col is None:
+        return jsonify({"error": "Base de datos no disponible"}), 500
+    estudiantes = list(students_col.find({}, {'_id': 0}))
+    return jsonify(estudiantes), 200
 
 
 # 3. OBTENER UN ESTUDIANTE POR ID (GET /students/{id})
 @estudiantes_bp.route('/students/<int:id>', methods=['GET'])
 def get_student_by_id(id):
-    estudiante = next((s for s in students_db if s['id'] == id), None)
+    if students_col is None:
+        return jsonify({"error": "Base de datos no disponible"}), 500
+    estudiante = students_col.find_one({"id": id}, {'_id': 0})
     if not estudiante:
         return jsonify({"error": f"Estudiante con ID {id} no encontrado"}), 404
     return jsonify(estudiante), 200
 
 
 # 4. ACTUALIZAR UN ESTUDIANTE (PUT /students/{id})
-@estudiantes_bp.route('/students/<int:id>', methods=['PUT', 'PATCH'])
+@estudiantes_bp.route('/students/<int:id>', methods=['PUT'])
 def update_student(id):
-    estudiante = next((s for s in students_db if s['id'] == id), None)
+    if students_col is None:
+        return jsonify({"error": "Base de datos no disponible"}), 500
+        
+    estudiante = students_col.find_one({"id": id})
     if not estudiante:
         return jsonify({"error": f"Estudiante con ID {id} no encontrado"}), 404
     
-    data = request.get_json()
+    data = get_request_data()
     if not data:
         return jsonify({"error": "No se proporcionaron datos para actualizar"}), 400
-    
-    # Si se intenta actualizar el DNI, verificar unicidad
-    if 'dni' in data and data['dni'] != estudiante['dni']:
-        if any(s['dni'] == str(data['dni']) for s in students_db):
-            return jsonify({"error": "El nuevo DNI ya pertenece a otro estudiante"}), 400
-        estudiante['dni'] = str(data['dni'])
 
-    # Modificamos los campos provistos
-    for field in ['name', 'age', 'is_approved']:
-        if field in data:
-            estudiante[field] = data[field]
-    if 'grade' in data:
-        estudiante['grade'] = float(data['grade'])
-        
-    # ⚠️ REQUERIMIENTO OBLIGATORIO: Actualizar la fecha de modificación
-    estudiante['updated_at'] = datetime.now().isoformat()
+    update_fields = {}
     
-    return jsonify(estudiante), 200
+    if 'dni' in data and data['dni'] != estudiante['dni']:
+        if students_col.find_one({"dni": str(data['dni'])}):
+            return jsonify({"error": "El nuevo DNI ya pertenece a otro estudiante"}), 400
+        update_fields['dni'] = str(data['dni'])
+
+    try:
+        if 'name' in data: update_fields['name'] = data['name']
+        if 'age' in data: update_fields['age'] = int(data['age'])
+        if 'grade' in data: update_fields['grade'] = float(data['grade'])
+        if 'is_approved' in data:
+            update_fields['is_approved'] = str(data.get('is_approved')).lower() in ['true', '1', 'on', 'yes']
+    except ValueError:
+        return jsonify({"error": "La edad y la nota deben ser valores numéricos válidos"}), 400
+        
+    update_fields['updated_at'] = datetime.now().isoformat()
+    
+    students_col.update_one({"id": id}, {"$set": update_fields})
+    actualizado = students_col.find_one({"id": id}, {'_id': 0})
+    return jsonify(actualizado), 200
 
 
 # 5. ELIMINAR UN ESTUDIANTE (DELETE /students/{id})
 @estudiantes_bp.route('/students/<int:id>', methods=['DELETE'])
 def delete_student(id):
-    global students_db
-    estudiante = next((s for s in students_db if s['id'] == id), None)
-    if not estudiante:
+    if students_col is None:
+        return jsonify({"error": "Base de datos no disponible"}), 500
+        
+    result = students_col.delete_one({"id": id})
+    if result.deleted_count == 0:
         return jsonify({"error": f"Estudiante con ID {id} no encontrado"}), 404
     
-    # Modificamos la lista original para que main.py vea los cambios
-    students_db[:] = [s for s in students_db if s['id'] != id]
     return jsonify({"message": f"Estudiante con ID {id} eliminado correctamente"}), 200
 
 
 # 6. CREACIÓN MASIVA (POST /students/bulk)
 @estudiantes_bp.route('/students/bulk', methods=['POST'])
 def bulk_insert_students():
-    global current_id
-    data = request.get_json()  # Se espera una lista de estudiantes
-    
+    if students_col is None:
+        return jsonify({"error": "Base de datos no disponible"}), 500
+        
+    data = request.get_json()
     if not isinstance(data, list):
         return jsonify({"error": "El cuerpo de la petición debe ser una lista de estudiantes"}), 400
     
     insertados = []
-    for item in data:
-        # Validación simple para bulk: nombre, nota y dni obligatorio
-        if all(k in item for k in ('name', 'grade', 'dni')):
-            # Verificar unicidad de DNI incluso en carga masiva
-            if any(s['dni'] == str(item['dni']) for s in students_db):
-                continue
-            current_id += 1
-            nuevo = {
-                "id": current_id,
-                "name": item['name'],
-                "dni": str(item['dni']),
-                "age": item.get('age', 0),
-                "is_approved": item.get('is_approved', False),
-                "grade": float(item['grade']),
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat()
-            }
-            students_db.append(nuevo)
-            insertados.append(nuevo)
-            
+    start_id = get_next_id()
+    # Definimos campos requeridos para consistencia
+    required = ['name', 'grade', 'dni', 'age', 'is_approved']
+    
+    try:
+        for item in data:
+        # Validamos que el objeto tenga los campos mínimos
+            if all(k in item for k in required):
+                if students_col.find_one({"dni": str(item['dni'])}):
+                    continue
+                nuevo = {
+                    "id": start_id,
+                    "name": item['name'],
+                    "dni": str(item['dni']),
+                    "age": int(item['age']),
+                    "is_approved": str(item.get('is_approved')).lower() in ['true', '1', 'on', 'yes'],
+                    "grade": float(item['grade']),
+                    "created_at": datetime.now().isoformat(), 
+                    "updated_at": datetime.now().isoformat()
+                }
+                insertados.append(nuevo)
+                start_id += 1
+    except (ValueError, TypeError):
+        return jsonify({"error": "Error en el formato de datos de uno o más estudiantes"}), 400
+    
+    if insertados:
+        students_col.insert_many(insertados)
+        for s in insertados: s.pop('_id', None)
+
     return jsonify({
         "message": f"Se registraron {len(insertados)} estudiantes con éxito",
         "students": insertados
@@ -171,14 +188,23 @@ def bulk_insert_students():
 # 7. PROMEDIO DE NOTAS (GET /students/average)
 @estudiantes_bp.route('/students/average', methods=['GET'])
 def get_students_average():
-    if not students_db:
+    if students_col is None:
         return jsonify({"average": 0.0, "total_students": 0}), 200
         
-    # Extraemos solo las notas y calculamos el promedio aritmético
-    notas = [s['grade'] for s in students_db]
-    promedio = sum(notas) / len(notas)
+    pipeline = [
+        {
+            "$group": {
+                "_id": None,
+                "avg_grade": {"$avg": "$grade"},
+                "total": {"$sum": 1}
+            }
+        }
+    ]
+    stats = list(students_col.aggregate(pipeline))
+    if not stats:
+        return jsonify({"average": 0.0, "total_students": 0}), 200
     
     return jsonify({
-        "average": round(promedio, 2),
-        "total_students": len(students_db)
+        "average": round(stats[0]['avg_grade'], 2),
+        "total_students": stats[0]['total']
     }), 200

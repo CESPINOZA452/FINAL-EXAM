@@ -39,7 +39,7 @@
             background: #fff;
             border: 1px solid #ddd;
             border-radius: 8px;
-            padding: 16px;
+            padding: 10px;
             height: fit-content;
         }
         label {
@@ -74,14 +74,13 @@
         .form-group-inline {
             display: flex; gap: 10px; align-items: flex-end;
         }
-        pre {
+        .output-box {
             background: #222;
             color: #eee;
             padding: 16px;
             border-radius: 8px;
             overflow-x: auto;
-            white-space: pre-wrap;
-            word-break: break-word;
+            min-height: 50px;
         }
     </style>
 </head>
@@ -144,11 +143,12 @@
                         <label for="create-grade">Nota</label>
                         <input id="create-grade" type="number" step="0.1" placeholder="0-20">
                     </div>
-                    <div style="display:flex; align-items:center; padding-top:25px;">
-                        <label style="margin:0">
-                            <input id="create-approved" type="checkbox"> Aprobado
-                        </label>
+                    
+                    <div style="display:flex; align-items:center; gap:5px; padding-top:10px;">
+                        <input id="create-approved" type="checkbox">
+                        <label for="create-approved" style="margin:0">Aprobado</label>
                     </div>
+
                 </div>
 
                 <div style="margin-top:15px; display:flex; gap:10px;">
@@ -156,16 +156,61 @@
                     <button id="btn-update" class="secondary" style="flex:1">Actualizar por ID</button>
                 </div>
             </section>
-            
-            <section>
-                <h2>Resultado de API</h2>
-                <pre id="output">Esperando acción...</pre>
-            </section>
         </div>
+
+        <section class="full-width">
+                <h2>Resultado de API</h2>
+                <div id="output" class="output-box">Esperando acción...</div>
+        </section>
+
     </div>
 
     <script>
         const output = document.getElementById('output');
+
+        // Función para convertir cualquier JSON de la API en una tabla HTML dinámica
+        function jsonToTable(data) {
+            if (!data) return "";
+            
+            // Manejo de mensajes simples (ej. Eliminación exitosa)
+            if (typeof data === 'object' && data.message && Object.keys(data).length === 1) {
+                return `<div style="color: #00ff00; font-weight: bold; font-family: monospace;">${data.message}</div>`;
+            }
+
+            let items = [];
+            let extraInfo = "";
+            
+            // Normalizar datos: Convertir objeto único o respuesta masiva en array para la tabla
+            if (Array.isArray(data)) {
+                items = data;
+            } else if (data.students && Array.isArray(data.students)) {
+                items = data.students;
+                extraInfo = `<p style="color: #00ff00; font-family: monospace;">${data.message}</p>`;
+            } else {
+                items = [data];
+            }
+
+            if (items.length === 0 || (items.length === 1 && items[0] === null)) return "No hay datos disponibles.";
+
+            const headers = Object.keys(items[0]);
+            let html = extraInfo + '<div style="overflow-x: auto;"><table style="width:100%; border-collapse: collapse; background: #000; color: white; font-size: 11px; margin-top: 5px; border: 1px solid #ddd;">';
+            
+            html += '<thead style="background: #000; color: white;"><tr>';
+            headers.forEach(h => html += `<th style="padding: 6px; border: 1px solid #ddd; text-align: left;">${h.toUpperCase()}</th>`);
+            html += '</tr></thead><tbody>';
+            
+            items.forEach(item => {
+                html += '<tr>';
+                headers.forEach(h => {
+                    let val = item[h];
+                    if (typeof val === 'boolean') val = val ? 'SÍ' : 'NO';
+                    html += `<td style="padding: 6px; border: 1px solid #ddd;">${val ?? '-'}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            return html;
+        }
 
         async function callApi(path, method = 'GET', body = null) {
             try {
@@ -176,17 +221,23 @@
                 }
 
                 const response = await fetch(path, options);
+                const contentType = response.headers.get("content-type");
                 const responseText = await response.text();
-                let data;
-                try {
-                    data = JSON.parse(responseText);
-                } catch (error) {
-                    data = responseText;
-                }
+                
+                const headerHtml = `<div style="color: #00ff00; margin-bottom: 8px; font-weight: bold; font-family: monospace; border-bottom: 1px solid #444; padding-bottom: 4px;">HTTP ${response.status} ${response.statusText}</div>`;
 
-                output.textContent = `HTTP ${response.status} ${response.statusText}\n\n${typeof data === 'string' ? data : JSON.stringify(data, null, 2)}`;
+                if (contentType && contentType.includes("application/json")) {
+                    try {
+                        const data = JSON.parse(responseText);
+                        output.innerHTML = headerHtml + jsonToTable(data);
+                    } catch (e) {
+                        output.innerHTML = headerHtml + `<pre style="color: white; margin:0;">${responseText}</pre>`;
+                    }
+                } else {
+                    output.innerHTML = headerHtml + responseText;
+                }
             } catch (error) {
-                output.textContent = `Error: ${error.message}`;
+                output.innerHTML = `<div style="color: #ff4d4d; font-family: monospace;">Error: ${error.message}</div>`;
             }
         }
 
@@ -199,13 +250,13 @@
         });
 
         document.getElementById('btn-view-table').addEventListener('click', () => {
-            window.location.href = '/view/students';
+            callApi('/view/students', 'GET');
         });
 
         document.getElementById('btn-get').addEventListener('click', () => {
             const id = getValue('student-id');
             if (!id) {
-                output.textContent = 'Debe ingresar un ID válido.';
+                output.innerHTML = '<div style="color: #ffc107; font-family: monospace;">Debe ingresar un ID válido.</div>';
                 return;
             }
             callApi(`/students/${id}`, 'GET');
@@ -219,7 +270,7 @@
             const isApproved = document.getElementById('create-approved').checked;
 
             if (!name || !dni || !age || !grade) {
-                output.textContent = 'Ingrese nombre, dni, edad y nota para crear el estudiante.';
+                output.innerHTML = '<div style="color: #ffc107; font-family: monospace;">Complete todos los campos para crear el estudiante.</div>';
                 return;
             }
 
@@ -235,16 +286,16 @@
         document.getElementById('btn-update').addEventListener('click', () => {
             const id = getValue('update-id');
             if (!id) {
-                output.textContent = 'Debe ingresar el ID del estudiante a actualizar.';
+                output.innerHTML = '<div style="color: #ffc107; font-family: monospace;">Ingrese el ID del estudiante a actualizar.</div>';
                 return;
             }
 
             const body = {};
-            const name = getValue('update-name');
-            const dni = getValue('update-dni');
-            const age = getValue('update-age');
-            const grade = getValue('update-grade');
-            const isApproved = document.getElementById('update-approved').checked;
+            const name = getValue('create-name');
+            const dni = getValue('create-dni');
+            const age = getValue('create-age');
+            const grade = getValue('create-grade');
+            const isApproved = document.getElementById('create-approved').checked;
 
             if (name) body.name = name;
             if (dni) body.dni = dni;
@@ -253,7 +304,7 @@
             body.is_approved = isApproved;
 
             if (Object.keys(body).length === 0) {
-                output.textContent = 'Ingrese al menos un campo para actualizar.';
+                output.innerHTML = '<div style="color: #ffc107; font-family: monospace;">Ingrese al menos un campo para actualizar.</div>';
                 return;
             }
 
@@ -261,9 +312,9 @@
         });
 
         document.getElementById('btn-delete').addEventListener('click', () => {
-            const id = getValue('delete-id');
+            const id = getValue('student-id');
             if (!id) {
-                output.textContent = 'Debe ingresar el ID del estudiante a eliminar.';
+                output.innerHTML = '<div style="color: #ffc107; font-family: monospace;">Ingrese el ID para eliminar.</div>';
                 return;
             }
             callApi(`/students/${id}`, 'DELETE');
@@ -272,14 +323,14 @@
         document.getElementById('btn-bulk').addEventListener('click', () => {
             const raw = document.getElementById('bulk-json').value.trim();
             if (!raw) {
-                output.textContent = 'Ingrese JSON válido para la carga masiva.';
+                output.innerHTML = '<div style="color: #ffc107; font-family: monospace;">Ingrese el JSON para carga masiva.</div>';
                 return;
             }
             try {
                 const data = JSON.parse(raw);
                 callApi('/students/bulk', 'POST', data);
             } catch (error) {
-                output.textContent = `JSON inválido: ${error.message}`;
+                output.innerHTML = `<div style="color: #ff4d4d; font-family: monospace;">JSON inválido: ${error.message}</div>`;
             }
         });
 
